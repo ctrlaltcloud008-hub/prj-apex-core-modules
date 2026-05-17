@@ -5,23 +5,8 @@ import (
 	"time"
 
 	"cloud.google.com/go/spanner"
-	"google.golang.org/api/option"
 	"google.golang.org/grpc/codes"
 )
-
-type Config struct {
-	NumChannels           int
-	EnableEndToEndTracing bool
-	DatabaseRole          string
-	DisableRouteToLeader  bool
-}
-
-func DefaultConfig() Config {
-	return Config{
-		NumChannels:           4,
-		EnableEndToEndTracing: true,
-	}
-}
 
 type ReadOnlyOption func(*roConfig)
 
