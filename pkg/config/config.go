@@ -8,6 +8,7 @@ import (
 )
 
 func LoadConfig(v *viper.Viper, name string) error {
+
 	v.SetConfigName(name)
 	v.SetConfigType("yaml")
 	v.AddConfigPath(".")

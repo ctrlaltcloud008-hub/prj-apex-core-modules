@@ -33,6 +33,7 @@ type TracerConfig struct {
 const TracerName = "internal/otel"
 
 func defaultServiceNamespace(projectID string) string {
+
 	if projectID == "" {
 		return "default"
 	}

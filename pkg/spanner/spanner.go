@@ -15,6 +15,7 @@ type roConfig struct {
 }
 
 func WithMaxStaleness(staleness time.Duration) ReadOnlyOption {
+
 	return func(cfg *roConfig) {
 		cfg.staleness = staleness
 	}

@@ -22,6 +22,7 @@ const (
 )
 
 func (s Status) Validate() error {
+
 	switch s {
 	case StatusUploading, StatusValidating, StatusValidated, StatusTranscoding, StatusTranscoded,
 		StatusFanOut, StatusThumbnailing, StatusTranscribing, StatusModerating, StatusPublishGate,

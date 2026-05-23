@@ -13,8 +13,8 @@ type Logger struct {
 }
 
 func New(service, region, appEnv string) *Logger {
-	var logger *slog.Logger
 
+	var logger *slog.Logger
 	if appEnv != "local" {
 		logger = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	} else {

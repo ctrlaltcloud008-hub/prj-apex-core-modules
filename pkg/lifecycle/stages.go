@@ -35,6 +35,7 @@ type lifecycleEventInsert struct {
 }
 
 func AppendLifecycleEvents(ctx context.Context, txn *spanner.ReadWriteTransaction, videoID string, events ...LifeCycleEventParams) error {
+
 	if len(events) == 0 {
 		return nil
 	}

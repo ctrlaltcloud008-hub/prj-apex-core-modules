@@ -24,6 +24,7 @@ type TierLimits struct {
 }
 
 var TierLimitsMap = map[UserTier]TierLimits{
+
 	UserTierFree: {
 		MaxConcurrentUploads:     3,
 		MaxUploadsPerHour:        15,
