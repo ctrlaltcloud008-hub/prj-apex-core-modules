@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"cloud.google.com/go/spanner"
-	"github.com/ctrlaltcloud008-hub/prj-apex-core-module/prj-apex-core-modules/pkg/models"
+	"github.com/ctrlaltcloud008-hub/prj-apex-core-modules/pkg/models"
 	"google.golang.org/api/iterator"
 )
 
