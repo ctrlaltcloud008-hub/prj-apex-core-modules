@@ -2,9 +2,7 @@ package apperror
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
-	"time"
 
 	"cloud.google.com/go/spanner"
 	"google.golang.org/api/googleapi"
