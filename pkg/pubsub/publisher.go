@@ -8,10 +8,7 @@ import (
 	"github.com/ctrlaltcloud008-hub/prj-apex-core-modules/pkg/outbox"
 
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
-	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/api/option"
 )
 
 type Publisher struct {
