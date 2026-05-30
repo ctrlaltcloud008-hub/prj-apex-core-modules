@@ -9,7 +9,8 @@ import (
 )
 
 type Logger struct {
-	logger *slog.Logger
+	logger  *slog.Logger
+	service string
 }
 
 func New(service, region, appEnv string) *Logger {
@@ -22,9 +23,11 @@ func New(service, region, appEnv string) *Logger {
 	}
 
 	return &Logger{
+		service: service,
 		logger: logger.With(
 			slog.String("service", service),
 			slog.String("region", region),
+			slog.String("app_env", appEnv),
 		),
 	}
 }
@@ -61,6 +64,17 @@ func (l *Logger) Warn(ctx context.Context, eventType, msg string, attrs ...slog.
 }
 
 func (l *Logger) log(ctx context.Context, level slog.Level, eventType, msg string, attrs ...slog.Attr) {
-	attrs = append([]slog.Attr{slog.String("event_type", eventType)}, attrs...)
+	sc := trace.SpanContextFromContext(ctx)
+	base := []slog.Attr{
+		slog.String("event_type", eventType),
+		slog.String("actor", l.service),
+	}
+	if sc.IsValid() {
+		base = append(base,
+			slog.String("trace_id", sc.TraceID().String()),
+			slog.String("span_id", sc.SpanID().String()),
+		)
+	}
+	attrs = append(base, attrs...)
 	l.logger.LogAttrs(ctx, level, msg, attrs...)
 }
