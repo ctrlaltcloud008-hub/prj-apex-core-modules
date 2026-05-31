@@ -105,3 +105,35 @@ func CheckStorageQuota(ctx context.Context, txn *spanner.ReadWriteTransaction, u
 
 	return totalStorageUsed, nil
 }
+
+func CheckTranscoderQuotaPerRegion(ctx context.Context, txn *spanner.ReadWriteTransaction, region, status string) (int64, error) {
+
+	stmt := spanner.Statement{
+		SQL: `SELECT COUNT(1) as transcoding_jobs
+				FROM videos
+				WHERE region = @region AND status = @status`,
+		Params: map[string]any{
+			"region": region,
+			"status": status,
+		},
+	}
+
+	iter := txn.Query(ctx, stmt)
+	defer iter.Stop()
+
+	row, err := iter.Next()
+	if err == iterator.Done {
+		return 0, nil
+	}
+
+	if err != nil {
+		return 0, fmt.Errorf("query transcoding jobs for region %s and status %s: %w", region, status, err)
+	}
+
+	var transcodingJobs int64
+	if err := row.ColumnByName("transcoding_jobs", &transcodingJobs); err != nil {
+		return 0, fmt.Errorf("read transcoding jobs count for region %s and status %s: %w", region, status, err)
+	}
+
+	return transcodingJobs, nil
+}
