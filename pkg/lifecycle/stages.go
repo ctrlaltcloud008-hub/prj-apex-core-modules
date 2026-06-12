@@ -56,6 +56,11 @@ func AppendLifecycleEvents(ctx context.Context, txn *spanner.ReadWriteTransactio
 	return txn.BufferWrite(mutations)
 }
 
+// currentLifecycleEventSeq scans the video's interleaved lifecycle events for the
+// current max sequence. This is a local range scan within the parent row's split
+// (a handful of rows per video) — deliberately not cached on the videos row, since
+// a write-back mutation would conflict with callers that insert or update the
+// videos row in the same transaction.
 func currentLifecycleEventSeq(ctx context.Context, txn *spanner.ReadWriteTransaction, videoID string) (int64, error) {
 
 	stmt := spanner.Statement{

@@ -2,6 +2,7 @@ package pubsub
 
 import (
 	"context"
+	"time"
 
 	"cloud.google.com/go/pubsub/v2"
 	"go.opentelemetry.io/otel"
@@ -22,6 +23,19 @@ func WithNumGoroutines(num int) SubscriberOption {
 
 func WithMaxOutstandingBytes(max int) SubscriberOption {
 	return func(s *pubsub.Subscriber) { s.ReceiveSettings.MaxOutstandingBytes = max }
+}
+
+// WithMaxExtension sets how long the client keeps extending the ack deadline of
+// a message being processed. Must exceed the longest expected handler duration
+// (e.g. a multi-hour FFmpeg encode); the library default is 60 minutes.
+func WithMaxExtension(d time.Duration) SubscriberOption {
+	return func(s *pubsub.Subscriber) { s.ReceiveSettings.MaxExtension = d }
+}
+
+// WithMinExtensionPeriod sets the minimum ack-deadline extension period,
+// reducing ModifyAckDeadline RPC churn for long-running handlers.
+func WithMinExtensionPeriod(d time.Duration) SubscriberOption {
+	return func(s *pubsub.Subscriber) { s.ReceiveSettings.MinDurationPerAckExtension = d }
 }
 
 type Subscriber struct {

@@ -1,6 +1,7 @@
 package apperror
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -21,6 +22,12 @@ const (
 func Classify(err error) ErrorType {
 	if err == nil {
 		return Permanent
+	}
+
+	// Context cancellation/deadline means the work was interrupted (e.g. spot
+	// preemption SIGTERM), not that the message is bad — it must redeliver.
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return Transient
 	}
 
 	if spanner.ErrCode(err) == codes.Aborted {
