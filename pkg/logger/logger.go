@@ -13,11 +13,37 @@ type Logger struct {
 	service string
 }
 
+// replaceAttrGCP remaps slog's default "level" key to the "severity" field that
+// GCP Cloud Logging reads, and translates slog level strings to GCP's
+// LogSeverity enum names (e.g. "WARN" -> "WARNING").
+func replaceAttrGCP(groups []string, a slog.Attr) slog.Attr {
+	if a.Key != slog.LevelKey {
+		return a
+	}
+	a.Key = "severity"
+	if level, ok := a.Value.Any().(slog.Level); ok {
+		switch {
+		case level < slog.LevelInfo:
+			a.Value = slog.StringValue("DEBUG")
+		case level < slog.LevelWarn:
+			a.Value = slog.StringValue("INFO")
+		case level < slog.LevelError:
+			a.Value = slog.StringValue("WARNING")
+		default:
+			a.Value = slog.StringValue("ERROR")
+		}
+	}
+	return a
+}
+
 func New(service, region, appEnv string) *Logger {
 
 	var logger *slog.Logger
 	if appEnv != "local" {
-		logger = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+		logger = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+			Level:       slog.LevelInfo,
+			ReplaceAttr: replaceAttrGCP,
+		}))
 	} else {
 		logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	}
