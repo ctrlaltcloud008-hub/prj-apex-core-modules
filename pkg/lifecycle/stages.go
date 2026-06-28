@@ -2,11 +2,19 @@ package lifecycle
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	"cloud.google.com/go/spanner"
 	"github.com/ctrlaltcloud008-hub/prj-apex-core-modules/pkg/models"
 	"google.golang.org/api/iterator"
+	"google.golang.org/grpc/codes"
+)
+
+var (
+	ErrStageNotFound           = errors.New("video stage not found")
+	ErrStageTransitionConflict = errors.New("video stage transition conflicts with persisted state")
 )
 
 type LifeCycleEventParams struct {
@@ -27,6 +35,27 @@ type StageRecordParams struct {
 	Outcome     spanner.NullString
 	ErrorID     spanner.NullString
 	Actor       string
+}
+
+// StageTransitionParams describes the stage-record half of a video status
+// transition. The caller remains responsible for changing videos.status,
+// appending the lifecycle event, and writing any outbox entries in the same
+// Spanner transaction.
+type StageTransitionParams struct {
+	VideoID        string
+	FromStage      models.Status
+	FromAttempt    int64
+	ToStage        models.Status
+	ToAttempt      int64
+	TransitionedAt time.Time
+	Outcome        string
+	ErrorID        spanner.NullString
+	Actor          string
+}
+
+type stageTransaction interface {
+	ReadRow(context.Context, string, spanner.Key, []string) (*spanner.Row, error)
+	BufferWrite([]*spanner.Mutation) error
 }
 
 type lifecycleEventInsert struct {
@@ -112,4 +141,121 @@ func InsertVideoStageRecord(ctx context.Context, txn *spanner.ReadWriteTransacti
 	)
 
 	return txn.BufferWrite([]*spanner.Mutation{mutation})
+}
+
+// TransitionVideoStage atomically completes the current stage record and
+// starts the next one. Replaying an already-persisted transition is a no-op.
+func TransitionVideoStage(ctx context.Context, txn *spanner.ReadWriteTransaction, params StageTransitionParams) error {
+	return transitionVideoStage(ctx, txn, params)
+}
+
+func transitionVideoStage(ctx context.Context, txn stageTransaction, params StageTransitionParams) error {
+	if err := validateStageTransition(params); err != nil {
+		return err
+	}
+
+	startedAt, completedAt, currentExists, err := readStageTiming(
+		ctx, txn, params.VideoID, params.FromStage, params.FromAttempt,
+	)
+	if err != nil {
+		return fmt.Errorf("read current stage: %w", err)
+	}
+	if !currentExists {
+		return fmt.Errorf("%w: video_id=%s stage=%s attempt=%d",
+			ErrStageNotFound, params.VideoID, params.FromStage, params.FromAttempt)
+	}
+
+	_, _, nextExists, err := readStageTiming(
+		ctx, txn, params.VideoID, params.ToStage, params.ToAttempt,
+	)
+	if err != nil {
+		return fmt.Errorf("read next stage: %w", err)
+	}
+
+	if completedAt.Valid {
+		if nextExists {
+			return nil
+		}
+		return fmt.Errorf("%w: current stage is complete but next stage is missing",
+			ErrStageTransitionConflict)
+	}
+	if nextExists {
+		return fmt.Errorf("%w: next stage exists while current stage is incomplete",
+			ErrStageTransitionConflict)
+	}
+	if params.TransitionedAt.Before(startedAt) {
+		return fmt.Errorf("transition time %s precedes stage start %s",
+			params.TransitionedAt.Format(time.RFC3339Nano), startedAt.Format(time.RFC3339Nano))
+	}
+
+	mutations := []*spanner.Mutation{
+		spanner.Update("video_stages",
+			[]string{"video_id", "stage", "attempt", "completed_at", "duration_ms", "outcome", "error_id"},
+			[]any{
+				params.VideoID, string(params.FromStage), params.FromAttempt,
+				params.TransitionedAt, params.TransitionedAt.Sub(startedAt).Milliseconds(),
+				params.Outcome, params.ErrorID,
+			},
+		),
+		spanner.Insert("video_stages",
+			[]string{"video_id", "stage", "attempt", "started_at", "completed_at", "duration_ms", "outcome", "error_id", "actor"},
+			[]any{
+				params.VideoID, params.ToStage, params.ToAttempt,
+				spanner.NullTime{Time: params.TransitionedAt, Valid: true},
+				spanner.NullTime{}, spanner.NullInt64{}, spanner.NullString{}, spanner.NullString{}, params.Actor,
+			},
+		),
+	}
+
+	if err := txn.BufferWrite(mutations); err != nil {
+		return fmt.Errorf("buffer stage transition: %w", err)
+	}
+	return nil
+}
+
+func readStageTiming(
+	ctx context.Context,
+	txn stageTransaction,
+	videoID string,
+	stage models.Status,
+	attempt int64,
+) (time.Time, spanner.NullTime, bool, error) {
+	row, err := txn.ReadRow(ctx, "video_stages", spanner.Key{videoID, string(stage), attempt},
+		[]string{"started_at", "completed_at"})
+	if err != nil {
+		if spanner.ErrCode(err) == codes.NotFound {
+			return time.Time{}, spanner.NullTime{}, false, nil
+		}
+		return time.Time{}, spanner.NullTime{}, false, err
+	}
+
+	var startedAt time.Time
+	var completedAt spanner.NullTime
+	if err := row.Columns(&startedAt, &completedAt); err != nil {
+		return time.Time{}, spanner.NullTime{}, false, err
+	}
+	return startedAt, completedAt, true, nil
+}
+
+func validateStageTransition(params StageTransitionParams) error {
+	switch {
+	case params.VideoID == "":
+		return errors.New("video_id is required")
+	case params.FromStage == "":
+		return errors.New("from_stage is required")
+	case params.FromAttempt < 1:
+		return errors.New("from_attempt must be positive")
+	case params.ToStage == "":
+		return errors.New("to_stage is required")
+	case params.ToAttempt < 1:
+		return errors.New("to_attempt must be positive")
+	case params.TransitionedAt.IsZero():
+		return errors.New("transitioned_at is required")
+	case params.Outcome == "":
+		return errors.New("outcome is required")
+	case params.Actor == "":
+		return errors.New("actor is required")
+	default:
+		return nil
+	}
 }
